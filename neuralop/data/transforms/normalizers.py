@@ -3,6 +3,7 @@ from typing import Dict
 from ...utils import count_tensor_params
 from .base_transforms import Transform, DictTransform
 import torch
+import numpy as np
 
 class Normalizer(Transform):
     def __init__(self, mean, std, eps=1e-6):
@@ -77,6 +78,7 @@ class UnitGaussianNormalizer(Transform):
             dim = [dim]
         self.dim = dim
         self.n_elements = 0
+        self.npmean = None
 
     def fit(self, data_batch):
         self.update_mean_std(data_batch)
@@ -144,14 +146,20 @@ class UnitGaussianNormalizer(Transform):
         # multiply by (n_i + n_j) / (n_i + n_j + 1) for unbiased estimator
         self.std = torch.sqrt(self.squared_mean - self.mean**2) * self.n_elements / (self.n_elements - 1)
 
-    def transform(self, x):
-        return (x - self.mean) / (self.std + self.eps)
+    def transform(self, x, numpy=False):
+        if numpy and self.npmean is not None:
+            return (x - self.npmean) / (self.std + self.eps)
+        elif numpy and self.npmean is None:
+            self.npmean = self.mean.numpy()
+            return (x - self.npmean) / (self.std + self.eps)
+        else:
+            return (x - self.mean) / (self.std + self.eps)
 
     def inverse_transform(self, x):
         return x * (self.std + self.eps) + self.mean
 
     def forward(self, x):
-        return self.transform(x)
+        return self.transform(x) if not isinstance(x, np.ndarray) else self.transform(x, True)
 
     def cuda(self):
         self.mean = self.mean.cuda()
